@@ -1,0 +1,112 @@
+import { useState } from 'react'
+import api from '../api/axios'
+import { downloadExport } from '../utils/download'
+import { getErrorMessage } from '../utils/errors'
+
+const exportTypes = [
+  { value: 'blank', label: 'Blank form', hint: 'A printable copy of the questions', enabled: true },
+  { value: 'responses', label: 'Responses', hint: 'Coming soon', enabled: false },
+  { value: 'summary', label: 'Summary with charts', hint: 'Coming soon', enabled: false },
+]
+
+export default function ExportPanel({ formId }) {
+  const [type, setType] = useState('blank')
+  const [paper, setPaper] = useState('a4')
+  const [answerLines, setAnswerLines] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [done, setDone] = useState('')
+
+  const handleExport = async () => {
+    setBusy(true)
+    setError('')
+    setDone('')
+
+    try {
+      const res = await api.post('/exports', {
+        form_id: formId,
+        type,
+        options: { paper, answer_lines: answerLines },
+      })
+      await downloadExport(res.data)
+      setDone('Your PDF has been downloaded.')
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow p-6">
+      <h3 className="text-lg font-semibold text-slate-800 mb-4">Export to PDF</h3>
+
+      <div className="space-y-2 mb-5">
+        {exportTypes.map((t) => (
+          <label
+            key={t.value}
+            className={`flex items-start gap-3 rounded-md border px-3 py-2 ${
+              t.enabled ? 'cursor-pointer border-slate-300' : 'border-slate-200 opacity-50'
+            }`}
+          >
+            <input
+              type="radio"
+              name="export-type"
+              value={t.value}
+              checked={type === t.value}
+              disabled={!t.enabled}
+              onChange={() => setType(t.value)}
+              className="mt-1"
+            />
+            <span>
+              <span className="block text-sm font-medium text-slate-800">{t.label}</span>
+              <span className="block text-xs text-slate-500">{t.hint}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-6 mb-5">
+        <label className="text-sm text-slate-700">
+          Paper size{' '}
+          <select
+            value={paper}
+            onChange={(e) => setPaper(e.target.value)}
+            className="ml-2 rounded-md border border-slate-300 px-2 py-1"
+          >
+            <option value="a4">A4</option>
+            <option value="letter">Letter</option>
+          </select>
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={answerLines}
+            onChange={(e) => setAnswerLines(e.target.checked)}
+          />
+          Include answer lines
+        </label>
+      </div>
+
+      {error && (
+        <div className="rounded-md bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 mb-4">
+          {error}
+        </div>
+      )}
+      {done && (
+        <div className="rounded-md bg-green-50 border border-green-200 text-green-700 text-sm px-3 py-2 mb-4">
+          {done}
+        </div>
+      )}
+
+      <button
+        onClick={handleExport}
+        disabled={busy}
+        className="rounded-md bg-indigo-600 text-white px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-60"
+      >
+        {busy ? 'Generating PDF...' : 'Generate & download PDF'}
+      </button>
+    </div>
+  )
+}

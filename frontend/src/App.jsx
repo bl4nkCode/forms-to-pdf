@@ -1,7 +1,22 @@
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { GuestRoute, ProtectedRoute } from './components/RouteGuards'
+import Login from './pages/Login'
+import Register from './pages/Register'
+import Dashboard from './pages/Dashboard'
+
 export default function App() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100">
-      <h1 className="text-3xl font-bold text-indigo-600">Forms to PDF</h1>
-    </div>
+    <Routes>
+      <Route element={<GuestRoute />}>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+      </Route>
+
+      <Route element={<ProtectedRoute />}>
+        <Route path="/dashboard" element={<Dashboard />} />
+      </Route>
+
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+    </Routes>
   )
 }

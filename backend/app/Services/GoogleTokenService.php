@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
+use App\Exceptions\GoogleApiException;
 use App\Models\GoogleAccount;
 use Illuminate\Support\Facades\Http;
-use RuntimeException;
 
 class GoogleTokenService
 {
@@ -18,7 +18,7 @@ class GoogleTokenService
         }
 
         if (! $account->refresh_token) {
-            throw new RuntimeException('Google connection expired. Please reconnect.');
+            throw $this->reconnectException();
         }
 
         $response = Http::asForm()->post('https://oauth2.googleapis.com/token', [
@@ -29,7 +29,7 @@ class GoogleTokenService
         ]);
 
         if ($response->failed()) {
-            throw new RuntimeException('Google connection expired. Please reconnect.');
+            throw $this->reconnectException();
         }
 
         $account->update([
@@ -38,5 +38,14 @@ class GoogleTokenService
         ]);
 
         return $account->access_token;
+    }
+
+    private function reconnectException(): GoogleApiException
+    {
+        return new GoogleApiException(
+            'Google connection expired. Please reconnect.',
+            409,
+            'google_reconnect'
+        );
     }
 }

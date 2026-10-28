@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\FormController;
 use App\Http\Controllers\Api\GoogleAuthController;
 use Illuminate\Support\Facades\Route;
 
@@ -19,4 +20,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/google/redirect', [GoogleAuthController::class, 'redirect']);
     Route::get('/google/status', [GoogleAuthController::class, 'status']);
     Route::delete('/google', [GoogleAuthController::class, 'disconnect']);
+
+    Route::get('/forms', [FormController::class, 'index']);
+    Route::get('/forms/{id}', [FormController::class, 'show'])->where('id', '[A-Za-z0-9_-]+');
+    Route::get('/forms/{id}/responses', [FormController::class, 'responses'])->where('id', '[A-Za-z0-9_-]+');
 });

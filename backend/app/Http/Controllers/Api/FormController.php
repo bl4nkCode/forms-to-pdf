@@ -5,14 +5,17 @@ namespace App\Http\Controllers\Api;
 use App\Exceptions\GoogleApiException;
 use App\Http\Controllers\Controller;
 use App\Models\GoogleAccount;
+use App\Services\FormSummaryService;
 use App\Services\GoogleFormsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class FormController extends Controller
 {
-    public function __construct(private GoogleFormsService $forms)
-    {
+    public function __construct(
+        private GoogleFormsService $forms,
+        private FormSummaryService $summaries,
+    ) {
     }
 
     public function index(Request $request): JsonResponse
@@ -31,6 +34,16 @@ class FormController extends Controller
     public function responses(Request $request, string $id): JsonResponse
     {
         return $this->respond($request, fn (GoogleAccount $account) => $this->forms->getResponses($account, $id));
+    }
+
+    public function summary(Request $request, string $id): JsonResponse
+    {
+        return $this->respond($request, function (GoogleAccount $account) use ($id) {
+            $form = $this->forms->getForm($account, $id);
+            $result = $this->forms->getResponses($account, $id);
+
+            return $this->summaries->build($form, $result);
+        });
     }
 
     /**

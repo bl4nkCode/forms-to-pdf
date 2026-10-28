@@ -25,6 +25,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/forms', [FormController::class, 'index']);
     Route::get('/forms/{id}', [FormController::class, 'show'])->where('id', '[A-Za-z0-9_-]+');
     Route::get('/forms/{id}/responses', [FormController::class, 'responses'])->where('id', '[A-Za-z0-9_-]+');
+    Route::get('/forms/{id}/summary', [FormController::class, 'summary'])->where('id', '[A-Za-z0-9_-]+');
 
     Route::get('/exports', [ExportController::class, 'index']);
     Route::post('/exports', [ExportController::class, 'store'])->middleware('throttle:20,1');

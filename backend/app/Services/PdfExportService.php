@@ -21,8 +21,10 @@ class PdfExportService
 
     private const COLUMNS_PER_TABLE = 6;
 
-    public function __construct(private GoogleFormsService $forms)
-    {
+    public function __construct(
+        private GoogleFormsService $forms,
+        private FormSummaryService $summaries,
+    ) {
     }
 
     /**
@@ -36,6 +38,7 @@ class PdfExportService
             $pdf = match ($export->type) {
                 'blank' => $this->blankForm($export, $form),
                 'responses' => $this->responses($export, $account, $form),
+                'summary' => $this->summary($export, $account, $form),
                 default => throw new InvalidArgumentException("Unsupported export type: {$export->type}"),
             };
 
@@ -67,9 +70,7 @@ class PdfExportService
 
     private function responses(Export $export, GoogleAccount $account, array $form): DomPdf
     {
-        // Big PDFs need more time and memory than the defaults
-        @set_time_limit(180);
-        @ini_set('memory_limit', '512M');
+        $this->allowHeavyWork();
 
         $settings = $export->options ?? [];
         $layout = ($settings['layout'] ?? 'table') === 'per_page' ? 'per_page' : 'table';
@@ -83,13 +84,10 @@ class PdfExportService
 
         $limit = $layout === 'per_page' ? self::PER_PAGE_LIMIT : self::TABLE_LIMIT;
         $shown = $all->take($limit)->values();
-        $timezone = config('app.timezone');
 
         $rows = $shown->map(fn (array $response, int $index) => [
             'number' => $index + 1,
-            'submitted' => $response['submitted_at']
-                ? Carbon::parse($response['submitted_at'])->setTimezone($timezone)->format('M j, Y g:i A')
-                : '',
+            'submitted' => $this->formatTime($response['submitted_at'], 'M j, Y g:i A'),
             'email' => $response['email'],
             'answers' => $response['answers'],
         ])->all();
@@ -113,5 +111,44 @@ class PdfExportService
             $settings['paper'] ?? 'a4',
             $layout === 'table' ? 'landscape' : 'portrait'
         );
+    }
+
+    private function summary(Export $export, GoogleAccount $account, array $form): DomPdf
+    {
+        $this->allowHeavyWork();
+
+        $settings = $export->options ?? [];
+
+        $result = $this->forms->getResponses($account, $export->google_form_id);
+
+        if ($result['count'] === 0) {
+            throw new ExportException('This form has no responses to summarize yet.');
+        }
+
+        $summary = $this->summaries->build($form, $result);
+
+        return Pdf::loadView('pdf.summary', [
+            'form' => $form,
+            'summary' => $summary,
+            'settings' => $settings,
+            'firstSubmitted' => $this->formatTime($summary['first_submitted_at'], 'M j, Y'),
+            'lastSubmitted' => $this->formatTime($summary['last_submitted_at'], 'M j, Y'),
+        ])->setPaper($settings['paper'] ?? 'a4', 'portrait');
+    }
+
+    // Big PDFs need more time and memory than the defaults
+    private function allowHeavyWork(): void
+    {
+        @set_time_limit(180);
+        @ini_set('memory_limit', '512M');
+    }
+
+    private function formatTime(?string $iso, string $format): string
+    {
+        if (! $iso) {
+            return '';
+        }
+
+        return Carbon::parse($iso)->setTimezone(config('app.timezone'))->format($format);
     }
 }

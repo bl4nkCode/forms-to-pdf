@@ -8,26 +8,32 @@ export default function ExportPanel({ formId, responseCount }) {
   const [paper, setPaper] = useState('a4')
   const [answerLines, setAnswerLines] = useState(true)
   const [layout, setLayout] = useState('table')
+  const [textSamples, setTextSamples] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState('')
 
-  const responsesHint =
-    responseCount === null
-      ? 'Loading responses...'
-      : responseCount === 0
-        ? 'This form has no responses yet'
-        : `${responseCount} response${responseCount === 1 ? '' : 's'}, as a table or one per page`
+  const hasResponses = responseCount !== null && responseCount > 0
+
+  const noResponsesHint =
+    responseCount === null ? 'Loading responses...' : 'This form has no responses yet'
 
   const exportTypes = [
     { value: 'blank', label: 'Blank form', hint: 'A printable copy of the questions', enabled: true },
     {
       value: 'responses',
       label: 'Responses',
-      hint: responsesHint,
-      enabled: responseCount !== null && responseCount > 0,
+      hint: hasResponses
+        ? `${responseCount} response${responseCount === 1 ? '' : 's'}, as a table or one per page`
+        : noResponsesHint,
+      enabled: hasResponses,
     },
-    { value: 'summary', label: 'Summary with charts', hint: 'Coming soon', enabled: false },
+    {
+      value: 'summary',
+      label: 'Summary with charts',
+      hint: hasResponses ? 'Totals and bar charts for every question' : noResponsesHint,
+      enabled: hasResponses,
+    },
   ]
 
   const handleExport = async () => {
@@ -38,6 +44,7 @@ export default function ExportPanel({ formId, responseCount }) {
     const options = { paper }
     if (type === 'blank') options.answer_lines = answerLines
     if (type === 'responses') options.layout = layout
+    if (type === 'summary') options.text_samples = textSamples
 
     try {
       const res = await api.post('/exports', { form_id: formId, type, options })
@@ -116,11 +123,28 @@ export default function ExportPanel({ formId, responseCount }) {
             </select>
           </label>
         )}
+
+        {type === 'summary' && (
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={textSamples}
+              onChange={(e) => setTextSamples(e.target.checked)}
+            />
+            Include sample text answers
+          </label>
+        )}
       </div>
 
       {type === 'responses' && (
         <p className="text-xs text-slate-500 -mt-2 mb-5">
           Large forms are limited to the first 500 responses (table) or 200 (one per page).
+        </p>
+      )}
+      {type === 'summary' && (
+        <p className="text-xs text-slate-500 -mt-2 mb-5">
+          Summaries use up to the first 1,000 responses. Untick the box if your text answers may
+          contain personal information.
         </p>
       )}
 

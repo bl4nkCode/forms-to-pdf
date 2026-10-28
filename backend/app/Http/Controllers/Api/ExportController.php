@@ -37,12 +37,13 @@ class ExportController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'form_id' => ['required', 'string', 'max:200', 'regex:/^[A-Za-z0-9_-]+$/'],
-            'type' => ['required', Rule::in(['blank', 'responses'])],
+            'form_id' => ['required', 'string', 'max:200', 'regex:/^[A-Za-z0-9\_-]+$/'],
+            'type' => ['required', Rule::in(['blank', 'responses', 'summary'])],
             'options' => ['sometimes', 'array'],
             'options.paper' => ['sometimes', Rule::in(['a4', 'letter'])],
             'options.answer_lines' => ['sometimes', 'boolean'],
             'options.layout' => ['sometimes', Rule::in(['table', 'per_page'])],
+            'options.text_samples' => ['sometimes', 'boolean'],
         ]);
 
         $account = $request->user()->googleAccount;
@@ -58,6 +59,7 @@ class ExportController extends Controller
             'paper' => $request->input('options.paper', 'a4'),
             'answer_lines' => $request->boolean('options.answer_lines', true),
             'layout' => $request->input('options.layout', 'table'),
+            'text_samples' => $request->boolean('options.text_samples', true),
         ];
 
         try {
@@ -86,7 +88,9 @@ class ExportController extends Controller
         } catch (\Throwable $e) {
             report($e);
 
-            return response()->json(['message' => 'Could not generate the PDF.'], 500);
+            return response()->json([
+                'message' => 'Could not generate the PDF.',
+            ], 500);
         }
 
         return response()->json($export->fresh(), 201);
@@ -100,8 +104,14 @@ class ExportController extends Controller
         /** @var FilesystemAdapter $disk */
         $disk = Storage::disk('local');
 
-        if ($export->status !== 'completed' || ! $export->file_path || ! $disk->exists($export->file_path)) {
-            return response()->json(['message' => 'This export is not available.'], 404);
+        if (
+            $export->status !== 'completed'
+            || ! $export->file_path
+            || ! $disk->exists($export->file_path)
+        ) {
+            return response()->json([
+                'message' => 'This export is not available.',
+            ], 404);
         }
 
         return $disk->download($export->file_path, $export->filename, [

@@ -1,14 +1,15 @@
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import GoogleConnection from "../components/GoogleConnection";
 
 export default function Dashboard() {
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   const handleLogout = async () => {
-    await logout()
-    navigate('/login')
-  }
+    await logout();
+    navigate("/login");
+  };
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -27,12 +28,12 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-8">
-        <h2 className="text-2xl font-semibold text-slate-800">Welcome, {user.name}</h2>
-        <p className="text-slate-600 mt-2">
-          Your Google Forms will show up here once we connect your Google account.
-        </p>
+      <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+        <h2 className="text-2xl font-semibold text-slate-800">
+          Welcome, {user.name}
+        </h2>
+        <GoogleConnection />
       </main>
     </div>
-  )
+  );
 }

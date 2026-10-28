@@ -3,31 +3,44 @@ import api from '../api/axios'
 import { downloadExport } from '../utils/download'
 import { getErrorMessage } from '../utils/errors'
 
-const exportTypes = [
-  { value: 'blank', label: 'Blank form', hint: 'A printable copy of the questions', enabled: true },
-  { value: 'responses', label: 'Responses', hint: 'Coming soon', enabled: false },
-  { value: 'summary', label: 'Summary with charts', hint: 'Coming soon', enabled: false },
-]
-
-export default function ExportPanel({ formId }) {
+export default function ExportPanel({ formId, responseCount }) {
   const [type, setType] = useState('blank')
   const [paper, setPaper] = useState('a4')
   const [answerLines, setAnswerLines] = useState(true)
+  const [layout, setLayout] = useState('table')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState('')
+
+  const responsesHint =
+    responseCount === null
+      ? 'Loading responses...'
+      : responseCount === 0
+        ? 'This form has no responses yet'
+        : `${responseCount} response${responseCount === 1 ? '' : 's'}, as a table or one per page`
+
+  const exportTypes = [
+    { value: 'blank', label: 'Blank form', hint: 'A printable copy of the questions', enabled: true },
+    {
+      value: 'responses',
+      label: 'Responses',
+      hint: responsesHint,
+      enabled: responseCount !== null && responseCount > 0,
+    },
+    { value: 'summary', label: 'Summary with charts', hint: 'Coming soon', enabled: false },
+  ]
 
   const handleExport = async () => {
     setBusy(true)
     setError('')
     setDone('')
 
+    const options = { paper }
+    if (type === 'blank') options.answer_lines = answerLines
+    if (type === 'responses') options.layout = layout
+
     try {
-      const res = await api.post('/exports', {
-        form_id: formId,
-        type,
-        options: { paper, answer_lines: answerLines },
-      })
+      const res = await api.post('/exports', { form_id: formId, type, options })
       await downloadExport(res.data)
       setDone('Your PDF has been downloaded.')
     } catch (err) {
@@ -79,15 +92,37 @@ export default function ExportPanel({ formId }) {
           </select>
         </label>
 
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={answerLines}
-            onChange={(e) => setAnswerLines(e.target.checked)}
-          />
-          Include answer lines
-        </label>
+        {type === 'blank' && (
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={answerLines}
+              onChange={(e) => setAnswerLines(e.target.checked)}
+            />
+            Include answer lines
+          </label>
+        )}
+
+        {type === 'responses' && (
+          <label className="text-sm text-slate-700">
+            Layout{' '}
+            <select
+              value={layout}
+              onChange={(e) => setLayout(e.target.value)}
+              className="ml-2 rounded-md border border-slate-300 px-2 py-1"
+            >
+              <option value="table">Table (landscape)</option>
+              <option value="per_page">One response per page</option>
+            </select>
+          </label>
+        )}
       </div>
+
+      {type === 'responses' && (
+        <p className="text-xs text-slate-500 -mt-2 mb-5">
+          Large forms are limited to the first 500 responses (table) or 200 (one per page).
+        </p>
+      )}
 
       {error && (
         <div className="rounded-md bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 mb-4">

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\ExportException;
 use App\Exceptions\GoogleApiException;
 use App\Http\Controllers\Controller;
 use App\Models\Export;
@@ -37,10 +38,11 @@ class ExportController extends Controller
     {
         $data = $request->validate([
             'form_id' => ['required', 'string', 'max:200', 'regex:/^[A-Za-z0-9_-]+$/'],
-            'type' => ['required', Rule::in(['blank'])],
+            'type' => ['required', Rule::in(['blank', 'responses'])],
             'options' => ['sometimes', 'array'],
             'options.paper' => ['sometimes', Rule::in(['a4', 'letter'])],
             'options.answer_lines' => ['sometimes', 'boolean'],
+            'options.layout' => ['sometimes', Rule::in(['table', 'per_page'])],
         ]);
 
         $account = $request->user()->googleAccount;
@@ -55,6 +57,7 @@ class ExportController extends Controller
         $settings = [
             'paper' => $request->input('options.paper', 'a4'),
             'answer_lines' => $request->boolean('options.answer_lines', true),
+            'layout' => $request->input('options.layout', 'table'),
         ];
 
         try {
@@ -75,6 +78,11 @@ class ExportController extends Controller
                 'message' => $e->getMessage(),
                 'code' => $e->errorCode,
             ], $e->status);
+        } catch (ExportException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'code' => 'export_failed',
+            ], 422);
         } catch (\Throwable $e) {
             report($e);
 

@@ -118,7 +118,10 @@ export default function FormDetail() {
         <p className="text-slate-600 mt-1">{form.description}</p>
       )}
       <div className="mt-6">
-        <ExportPanel formId={form.id} />
+        <ExportPanel
+          formId={form.id}
+          responseCount={responses ? responses.count : null}
+        />
       </div>
 
       <div className="flex border-b border-slate-200 mt-6 mb-6">

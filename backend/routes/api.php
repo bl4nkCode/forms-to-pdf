@@ -22,6 +22,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/google/status', [GoogleAuthController::class, 'status']);
     Route::delete('/google', [GoogleAuthController::class, 'disconnect']);
 
+    Route::post('/forms/import', [FormController::class, 'import'])
+        ->middleware('throttle:10,1');
     Route::get('/forms', [FormController::class, 'index']);
     Route::get('/forms/{id}', [FormController::class, 'show'])->where('id', '[A-Za-z0-9_-]+');
     Route::get('/forms/{id}/responses', [FormController::class, 'responses'])->where('id', '[A-Za-z0-9_-]+');

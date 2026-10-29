@@ -27,9 +27,8 @@ class ExportController extends Controller
     public function index(Request $request): JsonResponse
     {
         $exports = Export::where('user_id', $request->user()->id)
-            ->latest()
-            ->limit(50)
-            ->get();
+            ->latest('id')
+            ->paginate(10);
 
         return response()->json($exports);
     }
@@ -37,7 +36,7 @@ class ExportController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'form_id' => ['required', 'string', 'max:200', 'regex:/^[A-Za-z0-9\_-]+$/'],
+            'form_id' => ['required', 'string', 'max:200', 'regex:/^[A-Za-z0-9_-]+$/'],
             'type' => ['required', Rule::in(['blank', 'responses', 'summary'])],
             'options' => ['sometimes', 'array'],
             'options.paper' => ['sometimes', Rule::in(['a4', 'letter'])],
@@ -88,9 +87,7 @@ class ExportController extends Controller
         } catch (\Throwable $e) {
             report($e);
 
-            return response()->json([
-                'message' => 'Could not generate the PDF.',
-            ], 500);
+            return response()->json(['message' => 'Could not generate the PDF.'], 500);
         }
 
         return response()->json($export->fresh(), 201);
@@ -104,18 +101,25 @@ class ExportController extends Controller
         /** @var FilesystemAdapter $disk */
         $disk = Storage::disk('local');
 
-        if (
-            $export->status !== 'completed'
-            || ! $export->file_path
-            || ! $disk->exists($export->file_path)
-        ) {
-            return response()->json([
-                'message' => 'This export is not available.',
-            ], 404);
+        if ($export->status !== 'completed' || ! $export->file_path || ! $disk->exists($export->file_path)) {
+            return response()->json(['message' => 'This export is not available.'], 404);
         }
 
         return $disk->download($export->file_path, $export->filename, [
             'Content-Type' => 'application/pdf',
         ]);
+    }
+
+    public function destroy(Request $request, Export $export): JsonResponse
+    {
+        abort_unless($export->user_id === $request->user()->id, 404);
+
+        if ($export->file_path) {
+            Storage::disk('local')->delete($export->file_path);
+        }
+
+        $export->delete();
+
+        return response()->json(['message' => 'Export deleted.']);
     }
 }

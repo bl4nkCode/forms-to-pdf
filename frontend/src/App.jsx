@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import AppLayout from './components/AppLayout'
 import { GuestRoute, ProtectedRoute } from './components/RouteGuards'
 import Dashboard from './pages/Dashboard'
+import Exports from './pages/Exports'
 import FormDetail from './pages/FormDetail'
 import Forms from './pages/Forms'
 import Login from './pages/Login'
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/forms" element={<Forms />} />
           <Route path="/forms/:id" element={<FormDetail />} />
+          <Route path="/exports" element={<Exports />} />
         </Route>
       </Route>
 

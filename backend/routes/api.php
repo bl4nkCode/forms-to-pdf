@@ -30,4 +30,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/exports', [ExportController::class, 'index']);
     Route::post('/exports', [ExportController::class, 'store'])->middleware('throttle:20,1');
     Route::get('/exports/{export}/download', [ExportController::class, 'download'])->whereNumber('export');
+    Route::delete('/exports/{export}', [ExportController::class, 'destroy'])->whereNumber('export');
 });

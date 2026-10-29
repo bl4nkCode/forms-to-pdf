@@ -1,121 +1,150 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import api from '../api/axios'
-import { downloadExport } from '../utils/download'
-import { getErrorMessage } from '../utils/errors'
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import api from "../api/axios";
+import { downloadExport } from "../utils/download";
+import { getErrorMessage } from "../utils/errors";
+import { useEffect, useRef, useState } from "react";
 
 const typeLabels = {
-  blank: 'Blank form',
-  responses: 'Responses',
-  summary: 'Summary',
-}
+  blank: "Blank form",
+  responses: "Responses",
+  summary: "Summary",
+};
 
-const paperLabels = { a4: 'A4', letter: 'Letter' }
+const paperLabels = { a4: "A4", letter: "Letter" };
 
 const statusStyles = {
-  completed: 'bg-green-50 text-green-700',
-  failed: 'bg-red-50 text-red-700',
-  processing: 'bg-amber-50 text-amber-700',
-  pending: 'bg-slate-100 text-slate-600',
-}
+  completed: "bg-green-50 text-green-700",
+  failed: "bg-red-50 text-red-700",
+  processing: "bg-amber-50 text-amber-700",
+  pending: "bg-slate-100 text-slate-600",
+};
 
 // A short human-readable description of the options used for an export
 function describeOptions(exportRecord) {
-  const o = exportRecord.options || {}
-  const parts = []
+  const o = exportRecord.options || {};
+  const parts = [];
 
-  if (o.paper) parts.push(paperLabels[o.paper] || o.paper)
+  if (o.paper) parts.push(paperLabels[o.paper] || o.paper);
 
-  if (exportRecord.type === 'blank') {
-    parts.push(o.answer_lines === false ? 'no answer lines' : 'with answer lines')
-  } else if (exportRecord.type === 'responses') {
-    parts.push(o.layout === 'per_page' ? 'one per page' : 'table')
-  } else if (exportRecord.type === 'summary') {
-    parts.push(o.text_samples === false ? 'no text samples' : 'with text samples')
+  if (exportRecord.type === "blank") {
+    parts.push(
+      o.answer_lines === false ? "no answer lines" : "with answer lines",
+    );
+  } else if (exportRecord.type === "responses") {
+    parts.push(o.layout === "per_page" ? "one per page" : "table");
+  } else if (exportRecord.type === "summary") {
+    parts.push(
+      o.text_samples === false ? "no text samples" : "with text samples",
+    );
   }
 
-  return parts.join(', ')
+  return parts.join(", ");
 }
 
 export default function Exports() {
-  const [page, setPage] = useState(1)
-  const [reloadKey, setReloadKey] = useState(0)
-  const [result, setResult] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [notice, setNotice] = useState(null)
-  const [busyId, setBusyId] = useState(null)
+  const [page, setPage] = useState(1);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const silentRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false
-    setLoading(true)
+    let cancelled = false;
+    if (!silentRef.current) setLoading(true);
+    silentRef.current = false;
 
     api
-      .get('/exports', { params: { page } })
+      .get("/exports", { params: { page } })
       .then((res) => {
-        if (cancelled) return
+        if (cancelled) return;
         // If the last item on a page was deleted, step back one page
         if (res.data.data.length === 0 && page > 1) {
-          setPage(page - 1)
-          return
+          setPage(page - 1);
+          return;
         }
-        setResult(res.data)
-        setError('')
+        setResult(res.data);
+        setError("");
       })
       .catch((err) => {
-        if (!cancelled) setError(getErrorMessage(err))
+        if (!cancelled) setError(getErrorMessage(err));
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+        if (!cancelled) setLoading(false);
+      });
 
     return () => {
-      cancelled = true
-    }
-  }, [page, reloadKey])
+      cancelled = true;
+    };
+  }, [page, reloadKey]);
+
+  // While any export is still being generated, quietly refresh the list every few seconds
+  const hasActive = (result?.data ?? []).some(
+    (e) => e.status === "pending" || e.status === "processing",
+  );
+
+  useEffect(() => {
+    if (!hasActive) return;
+
+    const timer = setTimeout(() => {
+      silentRef.current = true;
+      setReloadKey((k) => k + 1);
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [hasActive, result]);
 
   const handleDownload = async (exportRecord) => {
-    setBusyId(exportRecord.id)
-    setNotice(null)
+    setBusyId(exportRecord.id);
+    setNotice(null);
     try {
-      await downloadExport(exportRecord)
+      await downloadExport(exportRecord);
     } catch (err) {
-      setNotice({ type: 'error', text: getErrorMessage(err) })
+      setNotice({ type: "error", text: getErrorMessage(err) });
     } finally {
-      setBusyId(null)
+      setBusyId(null);
     }
-  }
+  };
 
   const handleDelete = async (exportRecord) => {
-    if (!window.confirm(`Delete "${exportRecord.filename}" and its PDF file? This cannot be undone.`)) {
-      return
+    if (
+      !window.confirm(
+        `Delete "${exportRecord.filename}" and its PDF file? This cannot be undone.`,
+      )
+    ) {
+      return;
     }
 
-    setBusyId(exportRecord.id)
-    setNotice(null)
+    setBusyId(exportRecord.id);
+    setNotice(null);
     try {
-      await api.delete(`/exports/${exportRecord.id}`)
-      setNotice({ type: 'success', text: 'Export deleted.' })
-      setReloadKey((k) => k + 1)
+      await api.delete(`/exports/${exportRecord.id}`);
+      setNotice({ type: "success", text: "Export deleted." });
+      setReloadKey((k) => k + 1);
     } catch (err) {
-      setNotice({ type: 'error', text: getErrorMessage(err) })
+      setNotice({ type: "error", text: getErrorMessage(err) });
     } finally {
-      setBusyId(null)
+      setBusyId(null);
     }
-  }
+  };
 
-  const exports = result?.data ?? []
+  const exports = result?.data ?? [];
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold text-slate-800 mb-6">Export history</h2>
+      <h2 className="text-2xl font-semibold text-slate-800 mb-6">
+        Export history
+      </h2>
 
       {notice && (
         <div
           className={`rounded-md border text-sm px-3 py-2 mb-4 ${
-            notice.type === 'success'
-              ? 'bg-green-50 border-green-200 text-green-700'
-              : 'bg-red-50 border-red-200 text-red-700'
+            notice.type === "success"
+              ? "bg-green-50 border-green-200 text-green-700"
+              : "bg-red-50 border-red-200 text-red-700"
           }`}
         >
           {notice.text}
@@ -128,11 +157,15 @@ export default function Exports() {
         </div>
       )}
 
-      {loading && !result && <p className="text-slate-500">Loading your exports...</p>}
+      {loading && !result && (
+        <p className="text-slate-500">Loading your exports...</p>
+      )}
 
       {result && exports.length === 0 && (
         <div className="bg-white rounded-xl shadow p-8 text-center">
-          <p className="text-slate-600 mb-4">You haven't exported any PDFs yet.</p>
+          <p className="text-slate-600 mb-4">
+            You haven't exported any PDFs yet.
+          </p>
           <Link
             to="/forms"
             className="inline-block rounded-md bg-indigo-600 text-white px-4 py-2 text-sm font-medium hover:bg-indigo-700"
@@ -143,13 +176,17 @@ export default function Exports() {
       )}
 
       {exports.length > 0 && (
-        <div className={`bg-white rounded-xl shadow overflow-x-auto ${loading ? 'opacity-60' : ''}`}>
+        <div
+          className={`bg-white rounded-xl shadow overflow-x-auto ${loading ? "opacity-60" : ""}`}
+        >
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left text-slate-600">
               <tr>
                 <th className="px-4 py-3 font-medium">Form</th>
                 <th className="px-4 py-3 font-medium">Export</th>
-                <th className="px-4 py-3 font-medium whitespace-nowrap">Created</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">
+                  Created
+                </th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium text-right">Actions</th>
               </tr>
@@ -166,27 +203,33 @@ export default function Exports() {
                     </Link>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="text-slate-800">{typeLabels[exp.type] || exp.type}</div>
-                    <div className="text-xs text-slate-500">{describeOptions(exp)}</div>
+                    <div className="text-slate-800">
+                      {typeLabels[exp.type] || exp.type}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {describeOptions(exp)}
+                    </div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-slate-600">
                     {new Date(exp.created_at).toLocaleString()}
                   </td>
                   <td className="px-4 py-3">
                     <span
-                      title={exp.error_message || ''}
+                      title={exp.error_message || ""}
                       className={`inline-block rounded-full px-2 py-1 text-xs font-medium ${
                         statusStyles[exp.status] || statusStyles.pending
                       }`}
                     >
                       {exp.status}
                     </span>
-                    {exp.status === 'failed' && exp.error_message && (
-                      <div className="text-xs text-red-600 mt-1 max-w-48">{exp.error_message}</div>
+                    {exp.status === "failed" && exp.error_message && (
+                      <div className="text-xs text-red-600 mt-1 max-w-48">
+                        {exp.error_message}
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
-                    {exp.status === 'completed' && (
+                    {exp.status === "completed" && (
                       <button
                         onClick={() => handleDownload(exp)}
                         disabled={busyId === exp.id}
@@ -213,7 +256,8 @@ export default function Exports() {
       {result && result.last_page > 1 && (
         <div className="flex items-center justify-between mt-4 text-sm text-slate-600">
           <span>
-            Page {result.current_page} of {result.last_page} &middot; {result.total} exports
+            Page {result.current_page} of {result.last_page} &middot;{" "}
+            {result.total} exports
           </span>
           <div className="flex gap-2">
             <button
@@ -234,5 +278,5 @@ export default function Exports() {
         </div>
       )}
     </div>
-  )
+  );
 }

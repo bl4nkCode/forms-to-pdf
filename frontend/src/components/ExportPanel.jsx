@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import api from '../api/axios'
 import { downloadExport } from '../utils/download'
 import { getErrorMessage } from '../utils/errors'
+import { waitForExport } from '../utils/exports'
 
 export default function ExportPanel({ formId, responseCount }) {
   const [type, setType] = useState('blank')
@@ -10,8 +12,18 @@ export default function ExportPanel({ formId, responseCount }) {
   const [layout, setLayout] = useState('table')
   const [textSamples, setTextSamples] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [stage, setStage] = useState('')
   const [error, setError] = useState('')
-  const [done, setDone] = useState('')
+  const [done, setDone] = useState(false)
+
+  // Stop polling if the user leaves the page
+  const stopped = useRef(false)
+  useEffect(() => {
+    stopped.current = false
+    return () => {
+      stopped.current = true
+    }
+  }, [])
 
   const hasResponses = responseCount !== null && responseCount > 0
 
@@ -38,8 +50,9 @@ export default function ExportPanel({ formId, responseCount }) {
 
   const handleExport = async () => {
     setBusy(true)
+    setStage('Queued...')
     setError('')
-    setDone('')
+    setDone(false)
 
     const options = { paper }
     if (type === 'blank') options.answer_lines = answerLines
@@ -48,12 +61,36 @@ export default function ExportPanel({ formId, responseCount }) {
 
     try {
       const res = await api.post('/exports', { form_id: formId, type, options })
-      await downloadExport(res.data)
-      setDone('Your PDF has been downloaded.')
+
+      const finished = await waitForExport(res.data.id, {
+        isCancelled: () => stopped.current,
+        onUpdate: (exp, elapsedMs) => {
+          if (exp.status === 'processing') setStage('Generating PDF...')
+          else if (elapsedMs > 20000) setStage('Still queued... this is taking longer than usual')
+          else setStage('Queued...')
+        },
+      })
+
+      if (!finished) return // user left the page
+
+      if (finished.status === 'failed') {
+        setError(finished.error_message || 'The export failed. Please try again.')
+        return
+      }
+
+      await downloadExport(finished)
+      setDone(true)
     } catch (err) {
-      setError(getErrorMessage(err))
+      setError(
+        err.timedOut
+          ? 'The export is taking longer than expected. It will appear in your export history when it finishes.'
+          : getErrorMessage(err)
+      )
     } finally {
-      setBusy(false)
+      if (!stopped.current) {
+        setBusy(false)
+        setStage('')
+      }
     }
   }
 
@@ -74,7 +111,7 @@ export default function ExportPanel({ formId, responseCount }) {
               name="export-type"
               value={t.value}
               checked={type === t.value}
-              disabled={!t.enabled}
+              disabled={!t.enabled || busy}
               onChange={() => setType(t.value)}
               className="mt-1"
             />
@@ -91,6 +128,7 @@ export default function ExportPanel({ formId, responseCount }) {
           Paper size{' '}
           <select
             value={paper}
+            disabled={busy}
             onChange={(e) => setPaper(e.target.value)}
             className="ml-2 rounded-md border border-slate-300 px-2 py-1"
           >
@@ -104,6 +142,7 @@ export default function ExportPanel({ formId, responseCount }) {
             <input
               type="checkbox"
               checked={answerLines}
+              disabled={busy}
               onChange={(e) => setAnswerLines(e.target.checked)}
             />
             Include answer lines
@@ -115,6 +154,7 @@ export default function ExportPanel({ formId, responseCount }) {
             Layout{' '}
             <select
               value={layout}
+              disabled={busy}
               onChange={(e) => setLayout(e.target.value)}
               className="ml-2 rounded-md border border-slate-300 px-2 py-1"
             >
@@ -129,6 +169,7 @@ export default function ExportPanel({ formId, responseCount }) {
             <input
               type="checkbox"
               checked={textSamples}
+              disabled={busy}
               onChange={(e) => setTextSamples(e.target.checked)}
             />
             Include sample text answers
@@ -150,12 +191,19 @@ export default function ExportPanel({ formId, responseCount }) {
 
       {error && (
         <div className="rounded-md bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 mb-4">
-          {error}
+          {error}{' '}
+          <Link to="/exports" className="underline font-medium">
+            View export history
+          </Link>
         </div>
       )}
       {done && (
         <div className="rounded-md bg-green-50 border border-green-200 text-green-700 text-sm px-3 py-2 mb-4">
-          {done}
+          Your PDF has been downloaded. You can download it again from{' '}
+          <Link to="/exports" className="underline font-medium">
+            Export history
+          </Link>
+          .
         </div>
       )}
 
@@ -164,7 +212,7 @@ export default function ExportPanel({ formId, responseCount }) {
         disabled={busy}
         className="rounded-md bg-indigo-600 text-white px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-60"
       >
-        {busy ? 'Generating PDF...' : 'Generate & download PDF'}
+        {busy ? stage || 'Working...' : 'Generate & download PDF'}
       </button>
     </div>
   )

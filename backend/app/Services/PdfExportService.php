@@ -11,6 +11,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 use Throwable;
+use App\Exceptions\GoogleApiException;
 
 class PdfExportService
 {
@@ -24,8 +25,7 @@ class PdfExportService
     public function __construct(
         private GoogleFormsService $forms,
         private FormSummaryService $summaries,
-    ) {
-    }
+    ) {}
 
     /**
      * Build the PDF for an export, store it, and update the export record.
@@ -49,7 +49,7 @@ class PdfExportService
         } catch (Throwable $e) {
             $export->update([
                 'status' => 'failed',
-                'error_message' => $e instanceof ExportException
+                'error_message' => $e instanceof ExportException || $e instanceof GoogleApiException
                     ? $e->getMessage()
                     : 'The PDF could not be generated.',
             ]);
@@ -85,7 +85,7 @@ class PdfExportService
         $limit = $layout === 'per_page' ? self::PER_PAGE_LIMIT : self::TABLE_LIMIT;
         $shown = $all->take($limit)->values();
 
-        $rows = $shown->map(fn (array $response, int $index) => [
+        $rows = $shown->map(fn(array $response, int $index) => [
             'number' => $index + 1,
             'submitted' => $this->formatTime($response['submitted_at'], 'M j, Y g:i A'),
             'email' => $response['email'],

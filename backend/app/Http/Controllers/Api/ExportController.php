@@ -2,12 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Exceptions\ExportException;
 use App\Exceptions\GoogleApiException;
 use App\Http\Controllers\Controller;
+use App\Jobs\GenerateExportPdf;
 use App\Models\Export;
 use App\Services\GoogleFormsService;
-use App\Services\PdfExportService;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,10 +17,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ExportController extends Controller
 {
-    public function __construct(
-        private GoogleFormsService $forms,
-        private PdfExportService $pdfs,
-    ) {
+    public function __construct(private GoogleFormsService $forms)
+    {
     }
 
     public function index(Request $request): JsonResponse
@@ -31,6 +28,13 @@ class ExportController extends Controller
             ->paginate(10);
 
         return response()->json($exports);
+    }
+
+    public function show(Request $request, Export $export): JsonResponse
+    {
+        abort_unless($export->user_id === $request->user()->id, 404);
+
+        return response()->json($export);
     }
 
     public function store(Request $request): JsonResponse
@@ -54,6 +58,19 @@ class ExportController extends Controller
             ], 409);
         }
 
+        // Stop one user from flooding the queue (old unfinished rows are ignored)
+        $active = Export::where('user_id', $request->user()->id)
+            ->whereIn('status', ['pending', 'processing'])
+            ->where('created_at', '>', now()->subMinutes(15))
+            ->count();
+
+        if ($active >= 3) {
+            return response()->json([
+                'message' => 'You already have exports in progress. Please wait for them to finish.',
+                'code' => 'too_many_exports',
+            ], 429);
+        }
+
         $settings = [
             'paper' => $request->input('options.paper', 'a4'),
             'answer_lines' => $request->boolean('options.answer_lines', true),
@@ -62,35 +79,27 @@ class ExportController extends Controller
         ];
 
         try {
+            // A quick check that the form exists and is accessible, and we need its title
             $form = $this->forms->getForm($account, $data['form_id']);
-
-            $export = Export::create([
-                'user_id' => $request->user()->id,
-                'google_form_id' => $data['form_id'],
-                'form_title' => Str::limit($form['title'], 250, ''),
-                'type' => $data['type'],
-                'options' => $settings,
-                'status' => 'pending',
-            ]);
-
-            $this->pdfs->generate($export, $account, $form);
         } catch (GoogleApiException $e) {
             return response()->json([
                 'message' => $e->getMessage(),
                 'code' => $e->errorCode,
             ], $e->status);
-        } catch (ExportException $e) {
-            return response()->json([
-                'message' => $e->getMessage(),
-                'code' => 'export_failed',
-            ], 422);
-        } catch (\Throwable $e) {
-            report($e);
-
-            return response()->json(['message' => 'Could not generate the PDF.'], 500);
         }
 
-        return response()->json($export->fresh(), 201);
+        $export = Export::create([
+            'user_id' => $request->user()->id,
+            'google_form_id' => $data['form_id'],
+            'form_title' => Str::limit($form['title'], 250, ''),
+            'type' => $data['type'],
+            'options' => $settings,
+            'status' => 'pending',
+        ]);
+
+        dispatch(new GenerateExportPdf($export->id));
+
+        return response()->json($export, 202);
     }
 
     public function download(Request $request, Export $export): StreamedResponse|JsonResponse
